@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XER Look Ahead Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f6f9;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937}
+.page{max-width:1440px;margin:0 auto;padding:22px 26px 60px}
+.app-header h1{margin:0 0 4px;font-size:23px;color:#0b2545;font-weight:700}
+.app-header .subtitle{margin:0 0 18px;color:#5b6572;font-size:13px}
+.controls-bar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:22px;background:#fff;padding:16px 18px;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.06);margin-bottom:18px}
+.control-group{display:flex;flex-direction:column;gap:5px}
+.control-group label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#6b7280}
+.control-group input[type=file]{font-size:13px}
+.control-group input[type=number]{width:100px;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px}
+.control-group.buttons{flex-direction:row;flex-wrap:wrap;gap:8px;margin-left:auto}
+.btn{background:#eef2f7;color:#1f2937;border:1px solid #d7dce3;padding:9px 15px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s}
+.btn:hover{background:#e2e7ee}
+.btn.primary{background:#0078D4;color:#fff;border-color:#0078D4}
+.btn.primary:hover{background:#0063ad}
+.btn.pdf{background:#b91c1c;color:#fff;border-color:#b91c1c}
+.btn.pdf:hover{background:#991616}
+.btn.reset{background:#fef3c7;border-color:#f59e0b;color:#7c4a03}
+.btn.reset:hover{background:#fde68a}
+#msg{color:#c00;font-size:13px;margin:6px 2px}
+.legend{margin:6px 2px 20px;font-size:12px}
+.legend-item{padding:3px 10px;border-radius:4px;margin-right:10px;font-weight:600;display:inline-block}
+.legend-item.critical{background:#ff4d4d;color:#fff}
+.legend-item.nearcritical{background:#ffc0cb;color:#5c1a1a}
+
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px}
+.stat-card{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.06);padding:16px 18px;border-left:5px solid #94a3b8}
+.stat-card .stat-label{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;font-weight:700;margin-bottom:7px}
+.stat-card .stat-value{font-size:27px;font-weight:700;color:#0b2545;line-height:1.15}
+.stat-card .stat-sub{font-size:11.5px;color:#8a94a6;margin-top:6px}
+.stat-card.blue{border-left-color:#0078D4}
+.stat-card.green{border-left-color:#16a34a}
+.stat-card.red{border-left-color:#dc2626}
+.stat-card.amber{border-left-color:#f59e0b}
+.stat-value.green-text{color:#16a34a}
+.stat-value.red-text{color:#dc2626}
+.progress-outer{background:#e6e9ef;border-radius:6px;height:9px;margin-top:10px;overflow:hidden}
+.progress-inner{height:100%;background:linear-gradient(90deg,#0078D4,#16a34a);border-radius:6px}
+
+.chart-card,.table-card{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.06);padding:16px 18px;margin-bottom:20px}
+.chart-card h3,.table-card h3{margin:0 0 12px;font-size:15px;color:#0b2545;font-weight:700}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{border:1px solid #e5e7eb;padding:6px 8px}
+th{background:#0b2545;color:#fff;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px}
+.critical{background:#ff4d4d;color:#fff}
+.nearcritical{background:#ffc0cb}
+#dashboardFooter{
+ text-align:center;
+ padding:12px;
+ background:#0b2545;
+ color:white;
+ font-size:12px;
+ font-weight:600;
+ margin-top:20px;
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+ <div class="app-header">
+  <h1>Primavera P6 XER Look Ahead Dashboard</h1>
+<h2 id="projectName"
+style="margin:5px 0;color:#0078D4;font-size:18px;">
+Project Name
+</h2>
+  <p class="subtitle">Upload an .xer file to generate a rolling look-ahead schedule, progress statistics, population skyline and Gantt view.</p>
+ </div>
+
+ <div class="controls-bar">
+  <div class="control-group">
+   <label for="xerFile">XER File</label>
+   <input type="file" id="xerFile" accept=".xer">
+  </div>
+  <div class="control-group">
+   <label for="days">Look Ahead (days)</label>
+   <input type="number" id="days" value="30" min="1" max="3650" onchange="updateLookAheadPeriod()">
+  </div>
+  <div class="control-group">
+   <label for="dataDate">Data Date</label>
+   <input type="date" id="dataDate" onchange="updateLookAheadPeriod()">
+  </div>
+  <div class="control-group">
+   <label>Look Ahead Period</label>
+   <input type="text" id="lookAheadFrom" readonly style="padding:8px;border:1px solid #d1d5db;border-radius:6px;width:130px">
+  </div>
+  <div class="control-group">
+   <label>Look Ahead To</label>
+   <input type="text" id="lookAheadTo" readonly style="padding:8px;border:1px solid #d1d5db;border-radius:6px;width:130px">
+  </div>
+  
+  <div class="control-group"><label>BAC</label><input type="number" id="bac" value="100"></div>
+  <div class="control-group"><label>PV</label><input type="number" id="pv" value="50"></div>
+  <div class="control-group"><label>EV</label><input type="number" id="ev" value="45"></div>
+  <div class="control-group"><label>AC</label><input type="number" id="ac" value="48"></div>
+<div class="control-group buttons">
+   <button class="btn primary" onclick="parseXER()">Generate</button>
+   <button class="btn" id="btnSkyline" onclick="toggleSkyline()">Populate Skyline</button>
+   <button class="btn" id="btnGantt" onclick="toggleGantt()">Populate Gantt</button>
+   <button class="btn pdf" onclick="exportToPDF(event)">Export to PDF</button>
+  </div>
+ </div>
+
+ <div id="msg"></div>
+
+ <div id="dashboardSummary">
+ <div class="legend">
+  <span class="legend-item critical">Critical (TF &le; 0)</span>
+  <span class="legend-item nearcritical">Near Critical (TF &le; 80 hrs)</span>
+ </div>
+
+ <div id="evmGrid" class="stats-grid"></div>
+ <div id="statsGrid" class="stats-grid"></div>
+ </div>
+
+ <div class="chart-card">
+  <h3>Populate Skyline</h3>
+  <div id="sChart" style="width:100%;overflow:auto;padding:10px;min-height:120px"></div>
+ </div>
+
+ <div class="chart-card">
+  <h3>Gantt Chart</h3>
+  <div id="ganttContainer" style="overflow:auto;border:1px solid #dfe3ea;margin-top:4px;padding:4px;border-radius:8px"></div>
+ </div>
+
+ <div class="table-card">
+  <h3>Look Ahead Activities</h3>
+  <table>
+   <thead><tr><th>Activity ID</th><th>Name</th><th style="width:80px;text-align:center;">Dur (d)</th><th>Start</th><th>Finish</th></tr></thead>
+   <tbody id="activities"></tbody>
+  </table>
+ </div>
+
+</div>
+<script>
+let projectName='Project Name';
+let lookAheadActivities=[];
+let allTasks=[];
+let wbsMap={};
+let lastStats=null;
+let ganttScaleMode="dynamic";
+let skylineOn=false;
+let ganttOn=false;
+
+// ---- Populate / Reset toggle buttons -------------------------------------------
+function setSkylineState(on){
+ skylineOn=on;
+ const b=document.getElementById('btnSkyline');
+ b.textContent=on?'Reset Skyline':'Populate Skyline';
+ b.classList.toggle('reset',on);
+}
+function setGanttState(on){
+ ganttOn=on;
+ const b=document.getElementById('btnGantt');
+ b.textContent=on?'Reset Gantt':'Populate Gantt';
+ b.classList.toggle('reset',on);
+}
+function clearSkyline(){
+ document.getElementById('sChart').innerHTML='';
+ setSkylineState(false);
+}
+function clearGantt(){
+ document.getElementById('ganttContainer').innerHTML='';
+ setGanttState(false);
+}
+function toggleSkyline(){
+ if(skylineOn){ clearSkyline(); return; }
+ generateSChart();
+ if(document.getElementById('sChart').innerHTML.trim()) setSkylineState(true);
+}
+function toggleGantt(){
+ if(ganttOn){ clearGantt(); return; }
+ generateGantt();
+ if(document.getElementById('ganttContainer').innerHTML.trim()) setGanttState(true);
+}
+
+function renderEVM(){
+ const BAC=parseFloat(document.getElementById("bac")?.value||0);
+ const PV=parseFloat(document.getElementById("pv")?.value||0);
+ const EV=parseFloat(document.getElementById("ev")?.value||0);
+ const AC=parseFloat(document.getElementById("ac")?.value||0);
+ const plan=BAC?PV/BAC*100:0;
+ const prog=BAC?EV/BAC*100:0;
+ const spi=PV?EV/PV:0;
+ const cpi=AC?EV/AC:0;
+ document.getElementById('evmGrid').innerHTML=`<div class="stat-card amber"><div class="stat-label">Plan %</div><div class="stat-value">${plan.toFixed(1)}%</div></div><div class="stat-card blue"><div class="stat-label">Progress %</div><div class="stat-value">${prog.toFixed(1)}%</div></div><div class="stat-card ${spi>=1?'green':'red'}"><div class="stat-label">SPI</div><div class="stat-value">${spi.toFixed(2)}</div></div><div class="stat-card ${cpi>=1?'green':'red'}"><div class="stat-label">CPI</div><div class="stat-value">${cpi.toFixed(2)}</div></div>`;
+}
+
+function toggleGanttScale(){ganttScaleMode=ganttScaleMode==="dynamic"?"activities":"dynamic";document.getElementById("scaleBtn").innerText=ganttScaleMode==="dynamic"?"Dynamic Scale":"Activity Scale";generateGantt();}
+
+function parseDateValue(v){
+ if(!v) return null;
+ const raw=String(v).trim();
+ if(!raw) return null;
+ let d=new Date(raw);
+ if(!isNaN(d)) return d;
+ const p=raw.match(/(\d{1,2})-([A-Za-z]{3})-(\d{2,4})/);
+ if(p){
+  const months={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+  let y=parseInt(p[3]); if(y<100)y+=2000;
+  return new Date(y,months[p[2]],parseInt(p[1]));
+ }
+ // Fallback for slash-separated dates (DD/MM/YYYY or MM/DD/YYYY) that native Date() rejects.
+ const s=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+ if(s){
+  let a=parseInt(s[1]), b=parseInt(s[2]), y=parseInt(s[3]); if(y<100)y+=2000;
+  const month=a>12?b-1:a-1, day=a>12?a:b;
+  const nd=new Date(y,month,day);
+  if(!isNaN(nd)) return nd;
+ }
+ return null;
+}
+
+// ---- Status / progress helpers -------------------------------------------------
+function getStatus(t){
+ const s=(t.status_code||'').toUpperCase();
+ if(s.indexOf('COMPLETE')!==-1) return 'complete';
+ if(s.indexOf('ACTIVE')!==-1 || s.indexOf('PROGRESS')!==-1) return 'inprogress';
+ return 'notstarted';
+}
+function taskPctComplete(t){
+ const perf=parseFloat(t.performance_percent_complete);
+ if(!isNaN(perf)) return Math.max(0,Math.min(100,perf));
+ const sched=parseFloat(t.sched_percent_complete);
+ if(!isNaN(sched)) return Math.max(0,Math.min(100,sched));
+ const phys=parseFloat(t.phys_complete_pct);
+ if(!isNaN(phys)) return Math.max(0,Math.min(100,phys));
+ const actQty=parseFloat(t.act_work_qty);
+ const tgtQty=parseFloat(t.target_work_qty);
+ if(!isNaN(actQty) && !isNaN(tgtQty) && tgtQty>0){
+   return Math.max(0,Math.min(100,(actQty/tgtQty)*100));
+ }
+ const status=getStatus(t);
+ if(status==='complete') return 100;
+ if(status==='notstarted') return 0;
+ const orig=parseFloat(t.target_drtn_hr_cnt||t.orig_dur_hr_cnt||0);
+ const remain=parseFloat(t.remain_drtn_hr_cnt||0);
+ if(orig>0) return Math.max(0,Math.min(100,((orig-remain)/orig)*100));
+ return 0;
+}
+function fmtDate(d){
+ return d?d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'N/A';
+}
+// Planned % complete: how far along the activity SHOULD be today based purely on its
+// baseline/target start-finish window (schedule position), independent of actual progress.
+
+function getDataDate(){
+ const field=document.getElementById('dataDate');
+ if(field && field.value){
+  const d=new Date(field.value);
+  d.setHours(0,0,0,0);
+  return d;
+ }
+ const today=new Date();
+ today.setHours(0,0,0,0);
+ return today;
+}
+
+function updateLookAheadPeriod(){
+ const dataDate=getDataDate();
+ const days=Number(document.getElementById("days").value)||30;
+ const endDate=new Date(dataDate);
+ endDate.setDate(endDate.getDate()+days);
+ document.getElementById("lookAheadFrom").value=fmtDate(dataDate); document.getElementById("lookAheadTo").value=fmtDate(endDate);
+}
+
+function planPctComplete(t){
+ const start=parseDateValue(t.target_start_date);
+ const finish=parseDateValue(t.target_end_date);
+ const today=getDataDate();
+ if(!start||!finish) return 0;
+ if(today>=finish) return 100;
+ if(today<=start) return 0;
+ const total=finish-start;
+ if(total<=0) return 100;
+ return Math.max(0,Math.min(100,((today-start)/total)*100));
+}
+
+// Builds the full statistics object used by both the stat cards and the PDF export.
+function computeStats(){
+ const total=allTasks.length;
+ let completed=0,inProgress=0,notStarted=0,onTime=0,delayed=0;
+ let totalDur=0,totalDone=0,totalPlanDone=0;
+ let forecastDate=null, baselineDate=null;
+ allTasks.forEach(t=>{
+  const status=getStatus(t);
+  if(status==='complete') completed++;
+  else if(status==='inprogress') inProgress++;
+  else notStarted++;
+
+  if(status==='complete'){
+   const act=parseDateValue(t.act_end_date);
+   const tgt=parseDateValue(t.target_end_date);
+   if(act && tgt){ if(act<=tgt) onTime++; else delayed++; }
+  }
+
+  const dur=parseFloat(t.target_drtn_hr_cnt||t.orig_dur_hr_cnt||0)||0;
+  const pct=taskPctComplete(t);
+  const planPct=planPctComplete(t);
+  totalDur+=dur; totalDone+=dur*pct/100; totalPlanDone+=dur*planPct/100;
+
+  let fDate;
+  if(status==='complete') fDate=parseDateValue(t.act_end_date||t.target_end_date);
+  else fDate=parseDateValue(t.early_end_date||t.reend_date||t.remain_end_date||t.target_end_date);
+  if(fDate && (!forecastDate || fDate>forecastDate)) forecastDate=fDate;
+
+  const bDate=parseDateValue(t.target_end_date);
+  if(bDate && (!baselineDate || bDate>baselineDate)) baselineDate=bDate;
+ });
+ const pctComplete=totalDur>0?(totalDone/totalDur*100):0;
+ const planPctCompleteOverall=totalDur>0?(totalPlanDone/totalDur*100):0;
+ let delayDays=null, isDelayed=false;
+ if(forecastDate && baselineDate){
+  delayDays=Math.round((forecastDate-baselineDate)/86400000);
+  isDelayed=delayDays>0;
+ }
+ return {total,lookAhead:lookAheadActivities.length,completed,inProgress,notStarted,onTime,delayed,pctComplete,planPctComplete:planPctCompleteOverall,forecastDate,baselineDate,delayDays,isDelayed};
+}
+
+function renderStats(stats){
+ const grid=document.getElementById('statsGrid');
+ const knownCompleted=stats.onTime+stats.delayed;
+ const onTimePct=knownCompleted?Math.round(stats.onTime/knownCompleted*100):null;
+ const delayedPct=knownCompleted?Math.round(stats.delayed/knownCompleted*100):null;
+ const forecastClass=stats.forecastDate?(stats.isDelayed?'red':'green'):'blue';
+ const forecastTextClass=forecastClass==='red'?'red-text':(forecastClass==='green'?'green-text':'');
+ let forecastSub='Insufficient date data';
+ if(stats.forecastDate && stats.baselineDate){
+  if(stats.delayDays===0) forecastSub='On baseline finish date';
+  else if(stats.isDelayed) forecastSub=stats.delayDays+' day(s) delayed vs. baseline ('+fmtDate(stats.baselineDate)+')';
+  else forecastSub=Math.abs(stats.delayDays)+' day(s) ahead of baseline ('+fmtDate(stats.baselineDate)+')';
+ }
+ grid.innerHTML=
+  '<div class="stat-card blue"><div class="stat-label">Total Activities</div><div class="stat-value">'+stats.total+'</div></div>'+
+  '<div class="stat-card amber"><div class="stat-label">Look Ahead Activities</div><div class="stat-value">'+stats.lookAhead+'</div></div>'+
+  '<div class="stat-card green"><div class="stat-label">Completed</div><div class="stat-value green-text">'+stats.completed+'</div></div>'+
+  '<div class="stat-card blue"><div class="stat-label">In Progress</div><div class="stat-value">'+stats.inProgress+'</div></div>'+
+  '<div class="stat-card"><div class="stat-label">Not Started</div><div class="stat-value">'+stats.notStarted+'</div></div>'+
+  '<div class="stat-card green"><div class="stat-label">Completed On Time</div><div class="stat-value green-text">'+stats.onTime+(onTimePct!==null?' <span style="font-size:13px;color:#8a94a6;font-weight:600">('+onTimePct+'%)</span>':'')+'</div></div>'+
+  '<div class="stat-card red"><div class="stat-label">Completed Delayed</div><div class="stat-value red-text">'+stats.delayed+(delayedPct!==null?' <span style="font-size:13px;color:#8a94a6;font-weight:600">('+delayedPct+'%)</span>':'')+'</div></div>'+
+  '<div class="stat-card blue" style="grid-column:span 2"><div class="stat-label">Progress % Complete (Performance)</div><div class="stat-value">'+stats.pctComplete.toFixed(1)+'%</div><div class="progress-outer"><div class="progress-inner" style="width:'+Math.min(100,stats.pctComplete).toFixed(1)+'%"></div></div></div>'+
+  '<div class="stat-card amber" style="grid-column:span 2"><div class="stat-label">Plan % Complete (Baseline)</div><div class="stat-value">'+stats.planPctComplete.toFixed(1)+'%</div><div class="progress-outer"><div class="progress-inner" style="width:'+Math.min(100,stats.planPctComplete).toFixed(1)+'%;background:linear-gradient(90deg,#f59e0b,#fbbf24)"></div></div></div>'+
+  '<div class="stat-card '+forecastClass+'" style="grid-column:span 2"><div class="stat-label">Forecast Project Completion</div><div class="stat-value '+forecastTextClass+'">'+fmtDate(stats.forecastDate)+'</div><div class="stat-sub">'+forecastSub+'</div></div>';
+}
+
+function parseXER(){
+ const f=document.getElementById('xerFile').files[0];
+ if(!f){document.getElementById('msg').innerText='Please select a XER file';return;}
+ document.getElementById('msg').innerText='';
+ const reader=new FileReader();
+ reader.onload=function(e){
+ try{
+  const lines=e.target.result.split(/\r?\n/);
+  let headers = [], inTask = false;
+  allTasks = [];
+  wbsMap = {};
+
+  let wbsHeaders = [], inWBS = false;
+
+  let projectHeaders = [];
+  let inProject = false;
+  for(const line of lines){
+   const c=line.split('\t');
+   if(c[0] === '%T'){
+   inTask = (c[1] === 'TASK');
+   inWBS = (c[1] === 'PROJWBS');
+   inProject = (c[1] === 'PROJECT');
+   continue;
+}
+   if(inTask && c[0]==='%F'){ headers=c.slice(1); continue; }
+   if(inWBS && c[0]==='%F'){ wbsHeaders=c.slice(1); continue; }
+   if(inProject && c[0]==='%F'){ projectHeaders=c.slice(1); continue; }
+   if(inTask && c[0]==='%R'){
+    let obj={}; headers.forEach((h,i)=>obj[h]=(c[i+1]||'').trim()); allTasks.push(obj);
+   }
+   if(inWBS && c[0]==='%R'){
+     let row={}; wbsHeaders.forEach((h,i)=>row[h]=(c[i+1]||'').trim());
+     const id=row.wbs_id||'';
+     const name=row.wbs_name||row.wbs_short_name||row.wbs_code||id;
+     if(id) wbsMap[id]=name;
+   }
+   if(inProject && c[0]==='%R'){
+     let row={}; projectHeaders.forEach((h,i)=>row[h]=(c[i+1]||'').trim());
+     projectName=row.proj_short_name||row.proj_name||row.proj_code||'Project Name';
+   }
+  }
+  document.getElementById('projectName').innerText=projectName;
+  const days=Number(document.getElementById('days').value)||30;
+  const today=getDataDate();
+  const end=new Date(today);
+  end.setDate(end.getDate()+days);
+  const activeTasks=allTasks.filter(t=>{
+   const status=getStatus(t);
+   return status==='notstarted' || status==='inprogress';
+  });
+  lookAheadActivities=activeTasks.filter(t=>{
+   const start=ganttGetStart(t);
+   const finish=ganttGetFinish(t,start);
+   if(!start || !finish) return false;
+   return start <= end && finish >= today;
+  });
+
+  // A freshly generated report starts with Skyline and Gantt cleared.
+  clearSkyline();
+  clearGantt();
+
+  lastStats=computeStats();
+  renderStats(lastStats);renderEVM();
+
+  const tb=document.getElementById('activities'); tb.innerHTML='';
+  let currentWBS='';
+  lookAheadActivities.slice(0,1000).forEach(t=>{
+   const wbs=(t.wbs_id?(t.wbs_id+' - '+(wbsMap[t.wbs_id]||'')):'Unassigned WBS');
+   if(wbs!==currentWBS){
+      currentWBS=wbs;
+      tb.innerHTML+=`<tr style="background:#003366;color:white;font-weight:bold"><td colspan="5">WBS: ${wbs}</td></tr>`;
+   }
+   const tf=parseFloat(t.total_float_hr_cnt||t.total_float||999999);
+   let cls='';
+   if(tf<=0) cls='critical';
+   else if(tf<=80) cls='nearcritical';
+   const sd=(t.target_start_date||t.early_start_date||'').split(' ')[0]; let finishDate=''; const status=getStatus(t); if(status==='inprogress'){finishDate=t.remain_end_date||t.reend_date||t.early_end_date||t.target_end_date||'';} else if(status==='complete'){finishDate=t.act_end_date||t.target_end_date||'';} else{finishDate=t.early_end_date||t.target_end_date||'';} const fd=finishDate.split(' ')[0]; const hrs=parseFloat(t.target_drtn_hr_cnt||t.remain_drtn_hr_cnt||t.orig_dur_hr_cnt||0); const dys=hrs/8; const od=hrs?Math.round(dys/2)*2:''; tb.innerHTML+=`<tr class="${cls}"><td>${t.task_code||''}</td><td>${t.task_name||''}</td><td style="width:80px;text-align:center">${od}</td><td>${sd}</td><td>${fd}</td></tr>`;
+  });
+ }catch(err){document.getElementById('msg').innerText='Parse Error: '+err.message;}
+ };
+ reader.readAsText(f);
+}
+
+// Draws the Activity ID centered inside each stacked bar segment when it fits.
+const activityIdLabelPlugin={
+ id:'activityIdLabels',
+ afterDatasetsDraw(chart){
+  const {ctx}=chart;
+  chart.data.datasets.forEach((dataset,dIdx)=>{
+   const meta=chart.getDatasetMeta(dIdx);
+   if(!meta || !meta.visible) return;
+   meta.data.forEach((bar,index)=>{
+    if(!dataset.data[index]) return;
+    const props=bar.getProps(['x','y','base','width'],true);
+    const barHeight=Math.abs(props.base-props.y);
+    if(barHeight<9) return;
+    const label=dataset.activityId||'';
+    if(!label) return;
+    ctx.save();
+    ctx.font='bold 9px Arial';
+    ctx.fillStyle='#fff';
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    const textWidth=ctx.measureText(label).width;
+    if(textWidth+4<=props.width){
+     ctx.fillText(label,props.x,(props.y+props.base)/2);
+    }
+    ctx.restore();
+   });
+  });
+ }
+};
+if(typeof Chart!=='undefined' && Chart.register) Chart.register(activityIdLabelPlugin);
+function minMaxTime(dates){
+ let min=dates[0].getTime(), max=dates[0].getTime();
+ for(const d of dates){ const t=d.getTime(); if(t<min)min=t; if(t>max)max=t; }
+ return [min,max];
+}
+const STACK_PALETTE=["#0078D4","#16a34a","#f59e0b","#dc2626","#7c3aed","#0891b2","#db2777","#65a30d","#ea580c","#4f46e5","#0d9488","#b91c1c","#4338ca","#a16207","#059669"];
+function getISOWeekNumber(date){
+ const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
+ const dayNum=d.getUTCDay()||7;
+ d.setUTCDate(d.getUTCDate()+4-dayNum);
+ const yearStart=new Date(Date.UTC(d.getUTCFullYear(),0,1));
+ return Math.ceil(((d-yearStart)/86400000+1)/7);
+}
+function generateSChart(){
+ if(!lookAheadActivities.length){alert("Generate report first.");return;}
+ const container=document.getElementById("sChart");
+ const today=getDataDate();
+ const dow=today.getDay();
+ const diffToMonday=(dow===0?-6:1-dow);
+ const currentWeekStart=new Date(today);
+ currentWeekStart.setDate(today.getDate()+diffToMonday);
+ const totalWeeks=8;
+ const palette=["#ff6600","#22aa44","#4f46e5","#0891b2","#db2777","#65a30d","#7c3aed","#0ea5e9","#16a34a","#f59e0b","#dc2626","#4338ca"];
+ let weekData=[];
+ let maxCount=1;
+ for(let i=0;i<totalWeeks;i++){
+   const ws=new Date(currentWeekStart); ws.setDate(currentWeekStart.getDate()+i*7);
+   const we=new Date(ws); we.setDate(ws.getDate()+6);
+   const acts=[];
+   lookAheadActivities.forEach(t=>{
+      const s=ganttGetStart(t); const f=ganttGetFinish(t,s);
+      if(s && f && s<=we && f>=ws){acts.push({id:t.task_code||'',name:t.task_name||'',start:fmtDate(s),finish:fmtDate(f)});}
+   });
+   maxCount=Math.max(maxCount,acts.length);
+   weekData.push({week:getISOWeekNumber(ws),year:ws.getFullYear(),ids:acts});
+ }
+ const chartH=520,rowH=24,barW=120,gap=40,left=55;
+ const svgW=(barW+gap)*weekData.length+left+20;
+ const svgH=chartH+60;
+ let svg='<svg width="'+svgW+'" height="'+svgH+'" xmlns="http://www.w3.org/2000/svg" style="background:#f8f8f8">';
+ for(let y=0;y<=maxCount;y++){
+   const py=chartH-(y*rowH);
+   svg+='<line x1="'+left+'" y1="'+py+'" x2="'+(svgW-10)+'" y2="'+py+'" stroke="#d0d0d0" />';
+   svg+='<text x="35" y="'+(py+4)+'" font-size="11">'+y+'</text>';
+ }
+ weekData.forEach((w,i)=>{
+   const x=left+20+i*(barW+gap);
+   w.ids.forEach((act,j)=>{
+      const y=chartH-((j+1)*rowH);
+      const c=palette[j%palette.length];
+      svg+=`
+<g>
+<title>
+Activity ID: ${act.id}
+Activity Name: ${act.name}
+Start Date: ${act.start}
+Finish Date: ${act.finish}
+</title>
+
+<rect
+ x="${x}"
+ y="${y}"
+ width="${barW}"
+ height="${rowH}"
+ fill="${c}"
+ stroke="#fff"/>
+
+<text
+ x="${x+barW/2}"
+ y="${y+16}"
+ text-anchor="middle"
+ font-size="11"
+ font-weight="bold"
+ fill="white">
+ ${act.id}
+</text>
+</g>`;
+   });
+   svg+='<text x="'+(x+barW/2)+'" y="'+(chartH+25)+'" text-anchor="middle" font-size="12">Week '+w.week+' ('+w.year+')</text>';
+ });
+ svg+='</svg>';
+ container.innerHTML=svg;
+}
+
+function ganttGetStart(t){
+ return parseDateValue(t.target_start_date||t.early_start_date||t.act_start_date||t.restart_date);
+}
+function ganttGetFinish(t,s){
+ let f=parseDateValue(t.target_end_date||t.early_end_date||t.act_end_date);
+ if(f) return f;
+ if(!s) return null;
+ const hrs=parseFloat(t.target_drtn_hr_cnt||t.remain_drtn_hr_cnt||t.orig_dur_hr_cnt||0);
+ const days=hrs?Math.max(1,Math.round(hrs/8)):1;
+ const nf=new Date(s);
+ nf.setDate(nf.getDate()+days);
+ return nf;
+}
+function generateGantt(){
+ if(!lookAheadActivities.length){alert("Generate report first.");return;}
+ const dates=[];
+ lookAheadActivities.forEach(t=>{
+  const s=ganttGetStart(t);
+  if(!s) return;
+  const f=ganttGetFinish(t,s);
+  dates.push(s); if(f) dates.push(f);
+ });
+ if(!dates.length){document.getElementById('ganttContainer').innerHTML='<p>No activities with valid start dates to display.</p>';return;}
+ const [minTime,maxTime]=minMaxTime(dates);
+ let minDate=new Date(minTime);
+ let maxDate=new Date(maxTime);
+ // Dynamic timescale: span exactly from the first activity's start month to the last activity's
+ // finish month (no forced minimum range) so the header always matches the actual data window.
+ minDate=new Date(minDate.getFullYear(),minDate.getMonth(),1);
+ maxDate=new Date(maxDate.getFullYear(),maxDate.getMonth()+1,0);
+
+ const totalDays=Math.max(1,Math.ceil((maxDate-minDate)/86400000)+1);
+ // Day width scales inversely with the span so short look-aheads get wide, readable bars while
+ // multi-year ranges still fit without an enormous scroll width.
+ let pxPerDay;
+ if(totalDays<=120) pxPerDay=8;
+ else if(totalDays<=365) pxPerDay=4;
+ else if(totalDays<=730) pxPerDay=2.2;
+ else pxPerDay=1.2;
+ const ganttWidth=document.getElementById('ganttContainer').clientWidth||1200; const timelineWidth=Math.max(ganttWidth-330,800); pxPerDay=timelineWidth/totalDays;
+ const monthPx=Math.round(30.44*pxPerDay);
+ const quarterPx=Math.round(91.31*pxPerDay);
+ const gridBg='background-image:repeating-linear-gradient(to right,#e6e6e6 0,#e6e6e6 1px,transparent 1px,transparent '+monthPx+'px),repeating-linear-gradient(to right,#9aa4b2 0,#9aa4b2 2px,transparent 2px,transparent '+quarterPx+'px);';
+ let g='<table style="border-collapse:collapse;width:100%">';
+ g+='<tr><td style="width:320px;font-weight:bold;border-right:1px solid #ccc;position:sticky;left:0;background:#fff;z-index:2">Activity</td><td><div style="position:relative;width:'+timelineWidth+'px;height:58px;background:#eef;overflow:hidden;'+gridBg+'">';
+ // Year row
+ let yd=new Date(minDate.getFullYear(),0,1);
+ while(yd<=maxDate){
+   const off=Math.max(0,Math.round((yd-minDate)/86400000));
+   g+='<div style="position:absolute;left:'+(off*pxPerDay)+'px;top:2px;font-size:13px;font-weight:bold;color:#172033;border-left:2px solid #445;padding-left:4px;white-space:nowrap">'+yd.getFullYear()+'</div>';
+   yd=new Date(yd.getFullYear()+1,0,1);
+ }
+ // Quarter row
+ let qd=new Date(minDate.getFullYear(),Math.floor(minDate.getMonth()/3)*3,1);
+ while(qd<=maxDate){
+   const off=Math.max(0,Math.round((qd-minDate)/86400000));
+   const q=Math.floor(qd.getMonth()/3)+1;
+   g+='<div style="position:absolute;left:'+(off*pxPerDay)+'px;top:21px;font-size:10px;font-weight:bold;color:#334;border-left:1px solid #99a;padding-left:3px;white-space:nowrap">Q'+q+'</div>';
+   qd.setMonth(qd.getMonth()+3);
+ }
+ // Month row
+ const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+ let md=new Date(minDate.getFullYear(),minDate.getMonth(),1);
+ while(md<=maxDate){
+   const off=Math.max(0,Math.round((md-minDate)/86400000));
+   g+='<div style="position:absolute;left:'+(off*pxPerDay)+'px;top:40px;font-size:9px;color:#667;border-left:1px solid #ccd;padding-left:2px;white-space:nowrap">'+monthNames[md.getMonth()]+'</div>';
+   md=new Date(md.getFullYear(),md.getMonth()+1,1);
+ }
+ g+='</div></td></tr>';
+ let currentWBS=''; let skipped=0;
+ lookAheadActivities.forEach(t=>{
+   const wbs=(t.wbs_id?(t.wbs_id+' - '+(wbsMap[t.wbs_id]||'')):'Unassigned WBS');
+   if(wbs!==currentWBS){currentWBS=wbs;g+=`<tr><td colspan="2" style="background:#003366;color:#fff;font-weight:bold;padding:4px;position:sticky;left:0;z-index:2">${wbs}</td></tr>`;}
+   const s=ganttGetStart(t);
+   if(!s){skipped++; return;}
+   const f=ganttGetFinish(t,s)||s;
+   const offset=Math.max(0,Math.round((s-minDate)/86400000));
+   const dur=Math.max(1,Math.round((f-s)/86400000)+1);
+   const tf=parseFloat(t.total_float_hr_cnt||999999);
+   let color='#0078D4'; if(tf<=0) color='#ff4d4d'; else if(tf<=80) color='#ffc0cb';
+   g+=`<tr><td style="width:320px;position:sticky;left:0;background:#fff;z-index:1;border-right:1px solid #ccc">${t.task_code||''} - ${t.task_name||''}</td><td><div style="position:relative;width:${timelineWidth}px;height:20px;background:#f7f7f7;${gridBg}"><div style="position:absolute;left:${offset*pxPerDay}px;width:${Math.max(12,dur*pxPerDay)}px;height:18px;background:${color}" title="${t.task_code||''}: ${s.toLocaleDateString()} → ${f.toLocaleDateString()}"></div></div></td></tr>`;
+ });
+ g+='</table>';
+ document.getElementById('ganttContainer').innerHTML=g;
+ document.getElementById('msg').innerText=skipped?`${skipped} activity(ies) have no parseable start date (target_start_date/early_start_date/act_start_date/restart_date all blank or unrecognized) and could not be plotted on the Gantt.`:'';
+}
+
+function pdfWait(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+// Captures an on-screen element to a canvas (used for Skyline and Gantt).
+async function captureElementCanvas(el,bg){
+ return await html2canvas(el,{backgroundColor:bg||'#ffffff',scale:2,width:el.scrollWidth,height:el.scrollHeight,windowWidth:el.scrollWidth});
+}
+
+// Adds an image scaled to fit inside a box, keeping aspect ratio. Returns the Y after it.
+function addFittedImage(doc,dataUrl,imgW,imgH,x,y,maxW,maxH){
+ let w=maxW, h=imgH*(maxW/imgW);
+ if(h>maxH){ h=maxH; w=imgW*(maxH/imgH); }
+ doc.addImage(dataUrl,'PNG',x,y,w,h);
+ return y+h;
+}
+
+// Copies a horizontal band of a canvas into a new canvas.
+function sliceCanvas(src,srcY,h){
+ const c=document.createElement('canvas');
+ c.width=src.width;
+ c.height=h;
+ c.getContext('2d').drawImage(src,0,srcY,src.width,h,0,0,src.width,h);
+ return c;
+}
+
+async function exportToPDF(evt){
+ if(!lookAheadActivities.length){alert('Generate report first.');return;}
+ if(typeof window.jspdf==='undefined'){alert('PDF library not loaded.');return;}
+ const btn=evt&&evt.target; if(btn) btn.disabled=true;
+ let skylineTemp=false, ganttTemp=false;   // charts built only for the export get removed afterwards
+ try{
+  const skylineEl=document.getElementById('sChart');
+  if(!skylineEl.innerHTML.trim()){ generateSChart(); skylineTemp=true; await pdfWait(400); }
+  const ganttEl=document.getElementById('ganttContainer');
+  if(!ganttEl.innerHTML.trim()){ generateGantt(); ganttTemp=true; await pdfWait(400); }
+
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'landscape',unit:'pt',format:'a4'});
+  const stats=lastStats||computeStats();
+  const pageW=doc.internal.pageSize.getWidth();
+  const pageH=doc.internal.pageSize.getHeight();
+  const margin=40;
+  const footerReserve=30;              // space kept free at the bottom for the footer
+  const days=Number(document.getElementById('days').value)||30;
+  const dataDate=getDataDate();
+  const endDate=new Date(dataDate); endDate.setDate(endDate.getDate()+days);
+  const generatedAt=new Date().toLocaleString();
+
+  // Header bar + footer credit, drawn on every page.
+  function drawHeaderFooter(){
+   doc.setFillColor(11,37,69);
+   doc.rect(0,0,pageW,54,'F');
+   doc.setFontSize(17);
+   doc.setTextColor(255,255,255);
+   doc.setFont(undefined,'bold');
+   doc.text('Planning Dashboard and Lookahead',margin,34);
+   doc.setFontSize(9);
+   doc.setFont(undefined,'normal');
+   doc.setTextColor(210,220,235);
+   doc.text('Generated '+generatedAt+'   |   Look Ahead Window: '+days+' days from '+fmtDate(dataDate)+' to '+fmtDate(endDate),margin,47);
+   // footer
+   doc.setFontSize(8);
+   doc.setTextColor(120);
+   doc.setFont(undefined,'normal');
+   doc.text('Developed by Adnah Jennifer',pageW/2,pageH-10,{align:'center'});
+  }
+
+  function pageTitle(text,y){
+   doc.setFontSize(13);
+   doc.setTextColor(11,37,69);
+   doc.setFont(undefined,'bold');
+   doc.text(text,margin,y);
+   doc.setFont(undefined,'normal');
+  }
+
+  // ---- Page 1: Dashboard summary (legend + EVM cards + statistic cards) -----------
+  drawHeaderFooter();
+  doc.setFontSize(12);
+  doc.setTextColor(11,37,69);
+  doc.setFont(undefined,'bold');
+  doc.text('Project Name: '+projectName,margin,68);
+  doc.setFont(undefined,'normal');
+  pageTitle('Dashboard Summary',86);
+  try{
+   renderEVM();
+   const summaryEl=document.getElementById('dashboardSummary');
+   const smc=await captureElementCanvas(summaryEl,'#f4f6f9');
+   addFittedImage(doc,smc.toDataURL('image/png'),smc.width,smc.height,margin,96,pageW-margin*2,pageH-96-footerReserve);
+  }catch(err){
+   doc.setFontSize(10);
+   doc.setTextColor(150,30,30);
+   doc.text('Dashboard summary could not be captured: '+err.message,margin,110);
+  }
+
+  // ---- Page 2: Statistics table (project name appears on page 1 only) -------------
+  doc.addPage();
+  drawHeaderFooter();
+  pageTitle('Project Statistics',68);
+
+  const knownCompleted=stats.onTime+stats.delayed;
+  const onTimePct=knownCompleted?Math.round(stats.onTime/knownCompleted*100):null;
+  const delayedPct=knownCompleted?Math.round(stats.delayed/knownCompleted*100):null;
+  const forecastLabel=stats.forecastDate?fmtDate(stats.forecastDate)+(stats.baselineDate?(stats.isDelayed?'  (Delayed '+stats.delayDays+' day(s))':'  (On Time / Ahead)'):''):'N/A';
+
+  const statRows=[
+   ['Total Activities',String(stats.total)],
+   ['Look Ahead Activities',String(stats.lookAhead)],
+   ['Completed',String(stats.completed)],
+   ['In Progress',String(stats.inProgress)],
+   ['Not Started',String(stats.notStarted)],
+   ['Completed On Time',stats.onTime+(onTimePct!==null?' ('+onTimePct+'%)':'')],
+   ['Completed Delayed',stats.delayed+(delayedPct!==null?' ('+delayedPct+'%)':'')],
+   ['Progress % Complete (Performance)',stats.pctComplete.toFixed(1)+'%'],
+   ['Plan % Complete (Baseline)',stats.planPctComplete.toFixed(1)+'%'],
+   ['Forecast Project Completion',forecastLabel]
+  ];
+
+  doc.autoTable({
+   startY:78,
+   head:[['Metric','Value']],
+   body:statRows,
+   theme:'grid',
+   styles:{fontSize:10,cellPadding:{top:6,bottom:6,left:8,right:8},lineColor:[225,229,235],lineWidth:0.6},
+   headStyles:{fillColor:[11,37,69],textColor:255,fontStyle:'bold',fontSize:10},
+   alternateRowStyles:{fillColor:[245,247,250]},
+   columnStyles:{0:{fontStyle:'bold',textColor:[60,70,85],cellWidth:300},1:{fontSize:11}},
+   margin:{left:margin,right:margin,top:60,bottom:footerReserve},
+   didParseCell:function(data){
+    if(data.section==='body' && data.column.index===1){
+     const label=data.row.raw[0];
+     if(label==='Completed On Time'){ data.cell.styles.textColor=[22,163,74]; data.cell.styles.fontStyle='bold'; }
+     if(label==='Completed Delayed'){ data.cell.styles.textColor=[220,38,38]; data.cell.styles.fontStyle='bold'; }
+     if(label==='Forecast Project Completion'){ data.cell.styles.textColor=stats.isDelayed?[220,38,38]:[22,163,74]; data.cell.styles.fontStyle='bold'; }
+     if(label==='Progress % Complete (Performance)' || label==='Plan % Complete (Baseline)'){ data.cell.styles.fontStyle='bold'; }
+    }
+   },
+   didDrawPage:function(){ drawHeaderFooter(); }
+  });
+
+  // ---- Page 3: Populate Skyline (own page) ---------------------------------------
+  doc.addPage();
+  drawHeaderFooter();
+  pageTitle('Populate Skyline',68);
+  try{
+   const sc=await captureElementCanvas(skylineEl);
+   addFittedImage(doc,sc.toDataURL('image/png'),sc.width,sc.height,margin,78,pageW-margin*2,pageH-78-footerReserve);
+  }catch(err){
+   doc.setFontSize(10);
+   doc.setTextColor(150,30,30);
+   doc.text('Populate Skyline could not be captured: '+err.message,margin,94);
+  }
+
+  // ---- Page 4+: Gantt Chart, sliced across pages ---------------------------------
+  // The timeline header (year / quarter / month) is repeated at the top of every
+  // continuation page so each page can be read on its own.
+  doc.addPage();
+  drawHeaderFooter();
+  pageTitle('Gantt Chart',68);
+  try{
+   const gc=await captureElementCanvas(ganttEl);
+   const pdfWidth=pageW-margin*2;
+   const scale=pdfWidth/gc.width;                 // PDF pt per canvas px
+   const factor=gc.width/ganttEl.scrollWidth;     // canvas px per CSS px
+
+   // Locate the timeline header row inside the captured canvas.
+   let headTopPx=0, headHPx=0;
+   const headRow=ganttEl.querySelector('table tr');
+   if(headRow){
+    const er=ganttEl.getBoundingClientRect();
+    const hr=headRow.getBoundingClientRect();
+    headTopPx=Math.max(0,Math.round((hr.top-er.top+ganttEl.scrollTop)*factor));
+    headHPx=Math.max(0,Math.min(Math.round(hr.height*factor),gc.height-headTopPx));
+   }
+   const headPt=headHPx*scale;
+   const headCanvas=headHPx>0?sliceCanvas(gc,headTopPx,headHPx):null;
+   const headDataUrl=headCanvas?headCanvas.toDataURL('image/png'):null;
+
+   let y=0, first=true;
+   while(y<gc.height){
+    let top=first?78:66;
+    if(!first && headDataUrl){
+     // repeat the timeline at the top of this continuation page
+     doc.addImage(headDataUrl,'PNG',margin,top,pdfWidth,headPt);
+     top+=headPt;
+    }
+    const availH=pageH-top-footerReserve;
+    const sliceH=Math.max(1,Math.min(Math.floor(availH/scale),gc.height-y));
+    const slice=sliceCanvas(gc,y,sliceH);
+    doc.addImage(slice.toDataURL('image/png'),'PNG',margin,top,pdfWidth,sliceH*scale);
+    y+=sliceH;
+    first=false;
+    if(y<gc.height){ doc.addPage(); drawHeaderFooter(); }
+   }
+  }catch(err){
+   doc.setFontSize(10);
+   doc.setTextColor(150,30,30);
+   doc.text('Gantt chart could not be captured: '+err.message,margin,90);
+  }
+
+  // ---- Activity table (new page) ---------------------------------------------------
+  doc.addPage();
+  drawHeaderFooter();
+  pageTitle('Look Ahead Activities',68);
+
+  const rows=lookAheadActivities.map(t=>{
+   const sd=(t.target_start_date||t.early_start_date||'').split(' ')[0];
+   const fd=(t.target_end_date||t.early_end_date||'').split(' ')[0];
+   const hrs=parseFloat(t.target_drtn_hr_cnt||t.remain_drtn_hr_cnt||t.orig_dur_hr_cnt||0);
+   const dys=hrs?Math.round(hrs/8):'';
+   const statusLabel={complete:'Completed',inprogress:'In Progress',notstarted:'Not Started'}[getStatus(t)];
+   return [t.task_code||'',t.task_name||'',dys,sd,fd,statusLabel];
+  });
+  doc.autoTable({
+   startY:78,
+   head:[['Activity ID','Name','Dur (d)','Start','Finish','Status']],
+   body:rows,
+   styles:{fontSize:8,cellPadding:3},
+   headStyles:{fillColor:[11,37,69],textColor:255,fontStyle:'bold'},
+   alternateRowStyles:{fillColor:[245,247,250]},
+   margin:{left:margin,right:margin,top:60,bottom:footerReserve},
+   didDrawPage:function(){ drawHeaderFooter(); }
+  });
+
+  doc.save('LookAhead_Report.pdf');
+ }catch(err){
+  alert('PDF export failed: '+err.message);
+ }finally{
+  // Remove charts that were only built for the export, restoring the buttons.
+  if(skylineTemp) clearSkyline();
+  if(ganttTemp) clearGantt();
+  if(btn) btn.disabled=false;
+ }
+}
+
+window.addEventListener('load',()=>{
+ const el=document.getElementById('dataDate');
+ if(el && !el.value){el.value=new Date().toISOString().split('T')[0];}
+ updateLookAheadPeriod();
+});
+</script>
+<footer id="dashboardFooter">
+Developed by Adnah Jennifer
+</footer>
+</body>
+</html>
