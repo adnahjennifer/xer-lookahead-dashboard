@@ -22,7 +22,7 @@ Plain HTML/CSS/JavaScript (no build step, no framework). Charting/export via CDN
 
 ## Usage
 
-1. Open `index.html` in any modern browser (or visit the [live demo](#) once deployed via GitHub Pages).
+1. Open `index.html` in any modern browser (or visit the [live demo](https://adnahjennifer.github.io/xer-lookahead-dashboard/) once deployed via GitHub Pages).
 2. Choose a `.xer` file exported from Primavera P6.
 3. Set the **Data Date** and **Look Ahead (days)** window.
 4. Click **Generate** to build the dashboard.
